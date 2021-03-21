@@ -1,5 +1,5 @@
 # Background
-`Adobe Target` always provided best in class experimentation and personalization. Our edge network is geographically distributed and we have points of presence in different parts of the world like `US`, `Europe`, `APAC`, etc. This allows to be closer to our customers users, but sometimes this is not enough since fundamentally Target always required a network call to retrieve personalized content.
+`Adobe Target` always provided best in class experimentation and personalization. Our edge network is geographically distributed and we have points of presence in different parts of the world like `US`, `Europe`, `APAC`, etc. This allows us to be closer to our customers users, but sometimes this is not enough since fundamentally Target always required a network call to retrieve personalized content.
 
 We always knew that this is could be problematic for some of our customers who are looking for near zero latency for experimentation and personalization. In November 2020 Adobe Target launched NodeJS SDK and Java SDK with On-Device Decisioning capabilities. In a nutshell On-Device Decisioning allows you to evaluate Target activities on-device avoiding a network roundtrip. For more details please check the official documentation [here](https://adobetarget-sdks.gitbook.io/docs/on-device-decisioning/introduction-to-on-device-decisioning).
 
