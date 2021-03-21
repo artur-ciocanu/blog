@@ -1,6 +1,4 @@
-# Adobe Target On Device Decisioning and edge computing
-
-## Background
+# Background
 `Adobe Target` always provided best in class experimentation and personalization. Our edge network is geographically distributed and we have points of presence in different parts of the world like `US`, `Europe`, `APAC`, etc. This allows to be closer to our customers users, but sometimes this is not enough since fundamentally Target always required a network call to retrieve personalized content.
 
 We always knew that this is could be problematic for some of our customers who are looking for near zero latency for experimentation and personalization. In November 2020 Adobe Target launched NodeJS SDK and Java SDK with On-Device Decisioning capabilities. In a nutshell On-Device Decisioning allows you to evaluate Target activities on-device avoiding a network roundtrip. For more details please check the official documentation [here](https://adobetarget-sdks.gitbook.io/docs/on-device-decisioning/introduction-to-on-device-decisioning).
@@ -16,7 +14,7 @@ The series is comprised of three parts:
 - part 2 - covers Cloudflare Workers and Adobe Target NodeJS SDK
 - part 3 - covers Akamai Edge Workers and Adobe Target NodeJS SDK
 
-## AWS Lambda@Edge and Target NodeJS SDK
+# AWS Lambda@Edge and Adobe Target NodeJS SDK
 At `Adobe Target` we are strong proponents of automation and `Infrastructure as Code`, that's why we love `Hashicorp Terraform`. For us `Terraform` provides the right amount declarative vs imperative code and it has escape hatches in case something is missing.
 
 `AWS Lambda@Edge` is a great technology if you intend to run some piece of logic in 200+ point of presence provided by `AWS Cloudfrount`, however it is not trivial to setup, especially if we want to set it up in a secure way. That's why we will be using `Terraform` to bootstrap all the infrastructure elements.
@@ -26,7 +24,7 @@ Before we begin there are a few prerequisites:
 - `Terraform` - we will use it to create all the required AWS resources. Please check the official Hashicorp documentation on how to install `Terraform` on your particular OS. In this article we will be showing examples using Mac OS X.
 - `NodeJS` - we will use NodeJS to get the Adobe Target NodeJS SDK dependency as well as using `NPM` to package the JavaScript and prepare it for `AWS Lambda`.
 
-## Creating the origin S3 bucket resources
+# Creating the origin S3 bucket resources
 In order to use `AWS Lambda@Edge` we need to create a `Cloudfrount distribution`. At the same time a `Cloudfrount distribution` requires an "origin". We don't really need an "origin", because we will use our own code to build an HTTP response, however to make AWS happy we will create a dummy S3 bucket. Here is the Terraform code to create a simple S3 bucket:
 ```hcl
 resource "aws_s3_bucket" "s3_bucket" {
@@ -61,7 +59,7 @@ resource "aws_s3_bucket_policy" "s3_bucket_policy" {
 ```
 NOTE: Here we have used Terraform `data` to create a policy document. We could have also used a JSON document and embedded into bucket policy, without a `data` element.
 
-## Creating the AWS Lambda function
+# Creating the AWS Lambda function
 Once we have everything in place from "origin" perspective, the next step is to create the `AWS Lambda function` that will be referenced by `Cloudfrount distribution`. Here is the `Terraform` code to do it:
 ```hcl
 resource "aws_lambda_function" "main" {
@@ -183,7 +181,7 @@ We have the sample `AWS Lambda function handler` and we have the On-Device Decis
 $ zip -r function.zip .
 ```
 
-## Creating the Cloudfrount distribution
+# Creating the Cloudfrount distribution
 To connect all the dots, we need to create the Cloudfront distribution. Here is the `Terraform` code to do it:
 ```hcl
 resource "aws_cloudfront_distribution" "cloudfront_distribution" {
@@ -239,7 +237,7 @@ There is a lot of boilerplate, but the most interesting pieces are:
 - `default_cache_behavior` - here we have to make sure `allowed_methods` is set to `["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"]` otherwise we won't b able to process `POST` requests
 - `lambda_function_association` - here we reference `AWS Lambda function` and ensure that we respond to `viewer-request` event type, which means that `AWS Lambda` will generate the response without "origin" being involved.
 
-## Testing it out
+# Testing it out
 If everything was setup properly, then you should have a `Cloudfront distribution` domain name. Using the domain name you could run a simple `cURL` command to check that everything is looking good. Here is a sample:
 ```bash
 curl --location --request POST 'dpqwfa2gsmjjr.cloudfront.net/v1/personalization' \
@@ -278,7 +276,7 @@ The output would look something like this:
 }
 ```
 
-## Conclusion
+# Conclusion
 By looking at the sheer amount of `Terraform` code one might ask:
 - Why even bother?
 - Why should I spend so much time and energy trying to deploy `Adobe Target NodeJS SDK` on `AWS Lambda@Edge`?
@@ -289,5 +287,5 @@ Here are a few benefits:
 - `Flexibility` - in the provided sample, we are returning a [Target Delivery API](http://developers.adobetarget.com/api/delivery-api/#tag/Delivery-API) response, but nothing stops you from adding custom logic and transformation to have a custom JSON output. Also you could build custom REST APIs on top of `AWS Lambda@Edg` that is tailored to your domain.
 - `Performance` - not everyone is Amazon or Google or Adobe and even if you have presence in multiple geographic locations you can't beat `Cloudfront` with its 200+ points of presence. By using `AWS Lambda@Edge` and `Adobe Target NodeJS SDK` you get low latency and a lot of flexibility.
 
-## Resources
+# Resources
 A full working example of `Adobe Target NodeJS SDK` and `AWS Lambda@Edge` can be found [here](https://github.com/artur-ciocanu/odd-lambda-edge).
