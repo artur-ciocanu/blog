@@ -1,0 +1,14 @@
+{
+  "name": "medium-publish",
+  "version": "1.0.0",
+  "description": "A simple Medium publishing tool",
+  "main": "index.js",
+  "scripts": {
+    "publish": "node index.js --draft"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^2.6.1"
+  }
+}
