@@ -1,1 +1,1 @@
-Adobe Target On-Device Decisioning and edge computing
+Adobe Target NodeJS SDK and Akamai EdgeWorkers

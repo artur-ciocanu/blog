@@ -1,110 +1,223 @@
-# Background
+# Introduction
 `Adobe Target` always provided best in class experimentation and personalization. Our edge network is geographically distributed and we have points of presence in different parts of the world like `US`, `Europe`, `APAC`, etc. This allows us to be closer to our customers users, but sometimes this is not enough since fundamentally Target always required a network call to retrieve personalized content.
 
 We always knew that this is could be problematic for some of our customers who are looking for near zero latency for experimentation and personalization. In November 2020 Adobe Target launched NodeJS SDK and Java SDK with On-Device Decisioning capabilities. In a nutshell On-Device Decisioning allows you to evaluate Target activities on-device avoiding a network roundtrip. For more details please check the official documentation [here](https://adobetarget-sdks.gitbook.io/docs/on-device-decisioning/introduction-to-on-device-decisioning).
 
 Adobe Target On-Device Decisioning while great for server side use cases where you can use one of our SDKs like [NodeJS](https://github.com/adobe/target-nodejs-sdk), [Java](https://github.com/adobe/target-java-sdk) and soon [Python](https://github.com/adobe/target-python-sdk) and [.NET](https://github.com/adobe/target-dotnet-sdk) can also be used in a serverless setup.
 
-Java and C# are awesome languages, but usually in a serverless setup, we prefer something a little bit more lightweight like NodeJS or Python. We already mentioned that Adobe Target has an edge network, but it is incomparable to Edge Computing Platforms aka CDNs like AWS Cloudfront, Cloudflare or Akamai.
+Java and C# are awesome languages, but usually in a serverless setup, we prefer something a little bit more lightweight like NodeJS or Python. We already mentioned that Adobe Target has an edge network, but it is incomparable to Edge Computing Platforms aka CDNs like AKamai, AWS Cloudfront or Cloudflare.
 
 I this three part series we will cover how anyone could use Adobe Target NodeJS SDK to run experimentation and personalization on an edge compute platform.
 
-The series is comprised of three parts:
-- part 1 - covers AWS Lambd@Edge and Adobe Target NodeJS SDK
-- part 2 - covers Cloudflare Workers and Adobe Target NodeJS SDK
-- part 3 - covers Akamai Edge Workers and Adobe Target NodeJS SDK
+Series list:
+- **part 1 - covers Akamai Edge Workers and Adobe Target NodeJS SDK**
+- part 2 - covers AWS Lambd@Edge and Adobe Target NodeJS SDKNodeJS SDK
+- part 3 - covers Cloudflare Workers and Adobe Target 
 
-# AWS Lambda@Edge and Adobe Target NodeJS SDK
-At `Adobe Target` we are strong proponents of automation and `Infrastructure as Code`, that's why we love `Hashicorp Terraform`. For us `Terraform` provides the right amount declarative vs imperative code and it has escape hatches in case something is missing.
+# Step by step guide
+At `Adobe Target` we are strong proponents of automation and `Infrastructure as Code`, that's why we love `Hashicorp Terraform`. For us `Terraform` provides the right amount of declarative vs imperative code and it has enough escape hatches in case something is missing.
 
-`AWS Lambda@Edge` is a great technology if you intend to run some piece of logic in 200+ point of presence provided by `AWS Cloudfrount`, however it is not trivial to setup, especially if we want to set it up in a secure way. That's why we will be using `Terraform` to bootstrap all the infrastructure elements.
+Recently `Akamai` launched `Akamai EdgeWorkers`. This is a new offering from `Akamai` that allows us to create small pieces of logic that can be distributed worldwide and executed in more than 2000+ locations. While we can always Akamai Control Center to setup everything, we will be leveraging `Terraform` and `Akamai CLI` to ensure we have all the steps codified in `Terraform` scripts or `Akamai CLI` commands. 
 
 Before we begin there are a few prerequisites:
-- `AWS account` - you will need a valid AWS account and credentials. `Terraform` relies on these credentials.
-- `Terraform` - we will use it to create all the required AWS resources. Please check the official Hashicorp documentation on how to install `Terraform` on your particular OS. In this article we will be showing examples using Mac OS X.
-- `NodeJS` - we will use NodeJS to get the Adobe Target NodeJS SDK dependency as well as using `NPM` to package the JavaScript and prepare it for `AWS Lambda`.
+- `Akamai access` - you will need to have access to Akamai and a product that support `EdgeWorkers` such as `Ion`. Also you should have access to `Akamai IAM` to be able to create an API Client. `Terraform` relies on API Client to be able to authenticate all the API calls during resource provisioning. 
+- `Akamai CLI` with `EdgeWorkers` package - we will use it to create `EdgeWorkers` required configurations.
+- `Terraform` - we will use it to create all the required `Akamai` resources. Please check the official `Hashicorp` documentation on how to install `Terraform` on your particular OS. In this article we will be showing examples using `Mac OS X`.
+- `NodeJS` - we will use NodeJS to get the `Adobe Target NodeJS SDK` dependency as well as using `NPM` to package the JavaScript and prepare it for `Akamai EdgeWorkers`.
 
-# Creating the origin S3 bucket resources
-In order to use `AWS Lambda@Edge` we need to create a `Cloudfrount distribution`. At the same time a `Cloudfrount distribution` requires an "origin". We don't really need an "origin", because we will use our own code to build an HTTP response, however to make AWS happy we will create a dummy S3 bucket. Here is the Terraform code to create a simple S3 bucket:
+Most of the resources that we will provision in `Akamai` require:
+- `group ID`
+- `contract ID`
+- `product ID`
+- `product name`
+So it is recommended that you copy these values somewhere so you have them handy. If you can't find these values, please talk to your `Akamai` account representative.
+
+## Creating Akamai EdgeWorker ID
+There are a couple of resources required in order to use `Akamai EdgeWorkers` and expose it via an HTTP endpoint. Here is the list:
+- `Akamai EdgeWorker ID`
+- `Akamai property`
+
+To create an `Akamai EdgeWorker ID` we will use `Akamai CLI`. Here is the command to create an `EdgeWorker ID`:
+```bash
+$ akamai ew create-id <group ID> <EdgWorker Name>
+```
+NOTE: Depending on your Akamai setup you might get a menu where you'll have to select the contract you want to use. Also you might have to select the resource tier for `EdgeWorkers`, just follow the `Akamai CLI` instructions it is pretty self-explanatory. 
+
+Once everything is has been executed successfully you should see the `EdgeWorker ID` being displayed in a table similar to this one:
+```bash
+---------------------------------------------------------------
+--- Created new EdgeWorker Identifier: ------------------------
+---------------------------------------------------------------
+edgeWorkerId  name              groupId      resourceTierId
+------------  ----------------  -------      ------------------
+5628          <EdgWorker Name>  <group ID>   <resource tier ID>  
+```
+NOTE: You'll have to save the `EdgeWorker ID` since it will be used later in the `Terraform` scripts.
+
+## Creating EdgeWorker debug secret
+While developing with `Akamai EdgeWorkers` it is extremely important to be able to troubleshoot what is happening behind the scenes. For this we will need to generate a debug secret. Here is the `Akamai CLI` command generate an `EdgeWorker` debug secret:
+```bash
+$ akamai ew secret
+```
+Once the secret is generated we will have to copy it to `Terraform` variables file. So we could reference the secret in `Akamai Property` rules.
+
+## Creating Content Provider Code
+Once we have the `EdgeWorker ID` setup, the next step is to create a Content Provider code aka CP code. This resource is required to be able to create an `Akamai Property`.
+
+The `Terraform` script to create a CP code looks like this:
 ```hcl
-resource "aws_s3_bucket" "s3_bucket" {
-  bucket = var.bucket_name
+resource "akamai_cp_code" "cp_code" {
+  name        = var.cp_code_name
+  contract_id = var.contract_id
+  group_id    = var.group_id
+  product_id  = var.product_id
 }
 ```
+As you can see, here are using `Terraform` variables. This allows us to externalize all the values that might vary between different environments like staging vs production.
 
-It is recommended to always keep `S3` bucket private, so to make sure `Cloudfront` can access our `S3` bucket we need to create an `Origin Access Identity`. Here is the `Terraform` code to do it:
+## Creating Edge Hostname
+The next resource that is required for an `Akamai Property` is the edge hostname. Here is the `Terraform` script to create an edge hostname.
+
 ```hcl
-resource "aws_cloudfront_origin_access_identity" "origin_access_identity" {
+resource "akamai_edge_hostname" "hostname" {
+  product_id    = var.product_id
+  contract_id   = var.contract_id
+  group_id      = var.group_id
+  edge_hostname = var.edge_hostname
+  ip_behavior   = "IPV6_COMPLIANCE"
+  certificate   = var.certificate_enrollment_id
 }
 ```
+Here is we use the same list of required `IDs` like product, contract and group. Besides this we also need a certificate enrollment ID. `EdgeWorkers` can be invoked ONLY via HTTPS, hence we need a certificate enrollment ID.
 
-Once we have the `S3` bucket and `Origin Access Identity` we can combine the two and create the `S3 bucket policy`. Here is the `Terraform` code to do it:
+## Creating Property Rules
+An `Akamai Property` can not be created without property rules. Property rules contain details like caching configurations, origin address, different behaviors etc.
+
+`Terraform` `Akamai` provider has a helper `data` element named `akamai_property_rules_template` that allows us to customize property rules via templates and variables. Here is the `Terraform` script for our property that references the `EdgeWorker ID` and `EdgeWorker debug secret` described earlier:
 ```hcl
-data "aws_iam_policy_document" "s3_policy" {
-  statement {
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.s3_bucket.arn}/*"]
+data "akamai_property_rules_template" "rules" {
+  template_file = abspath("${path.root}/property-snippets/rules.json")
 
-    principals {
-      type        = "AWS"
-      identifiers = [aws_cloudfront_origin_access_identity.origin_access_identity.iam_arn]
-    }
+  variables {
+    name  = "edge_worker_id"
+    type  = "string"
+    value = var.edge_worker_id
   }
-}
 
-resource "aws_s3_bucket_policy" "s3_bucket_policy" {
-  bucket = aws_s3_bucket.s3_bucket.id
-  policy = data.aws_iam_policy_document.s3_policy.json
+  variables {
+    name  = "edge_worker_debug_secret"
+    type  = "string"
+    value = var.edge_worker_debug_secret
+  }
+
+  variables {
+    name  = "cp_code_id"
+    type  = "number"
+    value = replace(akamai_cp_code.cp_code.id, "cpc_", "")
+  }
+
+  variables {
+    name  = "cp_code_name"
+    type  = "string"
+    value = var.cp_code_name
+  }
+
+  variables {
+    name  = "origin_hostname"
+    type  = "string"
+    value = var.origin_hostname
+  }
+
+  variables {
+    name  = "product_name"
+    type  = "string"
+    value = var.product_name
+  }
+
 }
 ```
-NOTE: Here we have used Terraform `data` to create a policy document. We could have also used a JSON document and embedded into bucket policy, without a `data` element.
+As we can see we have a couple of variables that are required in property rules. We already mentioned we need `EdgeWorker ID` and `EdgeWorker debug secret`, we also need to add `origin hostname`, `product name`, `CP code name` and `CP code ID`. `CP code ID` has to be adjusted a little bit, since by default the IDs returned by `Akamai` have prefixes. For `CP code ID` it is `cpc_`, hence we leverage `Terraform` `replace` to get rid of `cpc_` and get the real `CP code ID`.
 
-# Creating the AWS Lambda function
-Once we have everything in place from "origin" perspective, the next step is to create the `AWS Lambda function` that will be referenced by `Cloudfrount distribution`. Here is the `Terraform` code to do it:
+## Creating Property
+Finally, when we have `EdgeWorker` details, `CP code`, `edge hostname` and `property rules` we can create an `Akamai property`. Here is the `Terraform` script to create it:
 ```hcl
-resource "aws_lambda_function" "main" {
-  function_name    = var.function_name
-  description      = var.function_description
-  filename         = var.filename
-  source_code_hash = filebase64sha256(var.filename)
-  handler          = var.handler
-  runtime          = var.runtime
-  role             = aws_iam_role.execution_role.arn
-  timeout          = var.timeout
-  memory_size      = var.memory_size
-  publish          = true
+resource "akamai_property" "property" {
+  name        = var.property_name
+  product_id  = var.product_id
+  contract_id = var.contract_id
+  group_id    = var.group_id
+
+  hostnames {
+    cname_from             = var.external_hostname
+    cname_to               = var.edge_hostname
+    cert_provisioning_type = "DEFAULT"
+  }
+
+  rule_format = "v2020-03-04"
+  rules       = data.akamai_property_rules_template.rules.json
 }
 ```
-NOTE: This is a bare bones function, for production use cases you'll want to make sure that function errors and logs are forwarded to `AWS CloudWatch`.
+Nothing extraordinary here, we are using the same required `IDs` like group, contract, product and we also reference the property rules template resource to get the final rules `JSON` value for this property.
 
-Looking at the `Terraform` code for `AWS Lambda function` we can se that there is a `filename`, `handler` and `runtime` fields. Let's see why we need these fields:
-- `filename` - this is the path to the ZIP archive containing the `AWS Lambda function` source code
-- `handler` - this is a reference a NodeJS exported function. Usually it is something like `index.handler`, assuming that the main file from the ZIP archive is `index.js` and it exports a function named `handler`.
-- `runtime` - this is the NodeJS runtime, we recommend using the latest NodeJS LTS version which is `nodejs12.x`.
+## Creating and Activating EdgeWorker Bundle
+Now that we have all the resources provisioned, we can look into how we can create an `Akamai EdgeWorker bundle`. 
 
-Having all the `Terraform` code related to `AWS Lambda function` out of the way, let's see how we can use `Adobe Target NodeJS SDK` to power the lambda function. There are a couple of prerequisites, as we already mentioned, we will be using On-Device Decisioning functionality, hence here is the list of prerequisites:
-- Target account - obviously to use Target you'll need a valid Target account
-- Target account has to have On-Device Decisioning enabled - this can be done from Target UI by going to Administration -> Implementation. Please check the screenshot.
-![](https://gblobscdn.gitbook.com/assets%2F-M4vqj-WnIlyhHMmo1aa%2F-MI_ugoHmt5kHETnsw8H%2F-MI_wDIFKSfOlWKO0wZQ%2Fodd4.png?alt=media&token=fa2923dd-9ae6-45f6-b482-18e9f4c43b7e)
-- On-Device Decisioning Artifact - the sample JavaScript code embeds the On-Device Decisioning artifact which is a JSON file containing experimentation and personalization details. The artifact can be downloaded from an URL that looks like this: `https://assets.adobetarget.com/{client code}/production/v1/rules.json`, where `{client code}` should be replaced with your Target client code.
+From bundling perspective `Akamai EdgeWorkers` requires the following:
+- `main.js` - this is the `EdgeWorker` entry point.
+- `bundle.json` - contains metadata related to `EdgeWorker` like version and description. For every code change we will have to update the version, otherwise we won't be able to upload the code.
+- `tgz` archive - this the actual bundle that contains `main.js` and `bundle.json` and is uploaded to `Akamai` network.
 
-In order to use Adobe Target NodeJS SDK we need to download it from `NPM`, we can use the following command:
+To automate the bundling process we will be using `NPM` and `Rollup` bundler. `NPM` will allow us to get all the required dependencies and `Rollup` will make sure that we bundle everything into a single `main.js` file. We will use `NPM scripts` to automate all of build and bundling the steps. To build the final `Akamai EdgeWorker` bundle we will execute:
+```bash
+$ npm run build
+```
+This will create a `tgz` archive under `dist` folder.
+
+To upload the newly created bundle we will use `Akamai CLI` and run the following command:
+```bash
+$ akamai ew upload --bundle=<path to tgz archive> <edge worker ID>
+```
+
+Once a new version of the bundle has been uploaded we can activate it using `Akamai CLI` and running this command:
+```bash
+$ akamai ew activate <edge worker iD> <network> <version>
+```
+NOTE: It is important to first activate the new version on a staging environment and ensure that everything is looking good and then activate it on production network.
+
+## EdgeWorker Script
+`Akamai EdgeWorker` environment is based on `v8` engine, so we can use most of the modern JavaScript constructs like `async/await`, `Promise`, etc. However there are some limitations, all these are covered [here](https://learn.akamai.com/en-us/webhelp/edgeworkers/edgeworkers-user-guide/GUID-F709406E-2D67-4996-B619-91E90F04EDF2.html).
+
+When starting to develope using `Akamai EdgeWorkers` it is important to decide which event handler we want to implement. More details around event handlers can be found [here](https://learn.akamai.com/en-us/webhelp/edgeworkers/edgeworkers-user-guide/GUID-65ED3146-E158-4443-B591-35E0D3B58DA2.html).
+
+For the sample code I have decided to use `responseProvider`, since I want the `EdgeWorker` code to react to incoming HTTP GET request and build an HTTP response. We will be using the `Adobe Target NodeJS SDK`, so we'll have to get the dependency via `NPM` using:
 ```bash
 $ npm i @adobe/target-nodejs-sdk -P
-```
-Once we have the `Adobe Target NodeJS SDK` dependency, we need to create the `AWS Lambda function handler`. Here is a sample one:
+``` 
+
+The sample code looks like this:
 ```JavaScript
-const TargetClient = require("@adobe/target-nodejs-sdk");
-const RULES = require("./rules.json");
+import { httpRequest } from "http-request";
+import { createResponse } from "create-response";
+import { logger } from "log";
+import TargetClient from "@adobe/target-nodejs-sdk";
+import RULES from "./rules";
+
+const STATUS = 200;
+const HEADERS = {
+  "Content-Type": ["application/json"]
+};
 
 const createTargetClient = () => {
   return new Promise(resolve => {
     const result = TargetClient.create({
       client: "<client code>",
-      organizationId: "<IMS organization ID>",
-      logger: console,
+      organizationId: "<organization ID>",
       decisioningMethod: "on-device",
       artifactPayload: RULES,
+      pollingInterval: 0, // "0" prevents polling, if artifactPayload is provided
+      targetLocationHint: "<location hint>", // prevent cluster discovery
+      logger: logger, // use Akamai EdgeWorker provided logger
+      fetchApi: httpRequest,
       events: {
         clientReady: () => resolve(result)
       }
@@ -112,180 +225,142 @@ const createTargetClient = () => {
   });
 };
 
-const getRequestBody = event => {
-  const request = event.Records[0].cf.request;
-  const body = Buffer.from(request.body.data, "base64").toString();
-
-  return JSON.parse(body);
-};
-
-const buildResponse = body => {
-  return {
-    status: "200",
-    statusDescription: "OK",
-    headers: {
-      "content-type": [{
-        key: "Content-Type",
-        value: "application/json"
+export async function responseProvider(request) {
+  const deliveryRequest = {      
+    execute: {
+      mboxes: [{
+        index: 0,
+        name: "mbox-params",
+        parameters: {
+          foo: "bar"
+        }
       }]
-    },
-    body: JSON.stringify(body)
-  }
-};
-
-const buildSuccessResponse = response => {
-  return buildResponse(response);
-};
-
-const buildErrorResponse = error => {
-  const response = {
-    message: "Something went wrong.",
-    error
+    }
   };
 
-  return buildResponse(response);
-};
+  logger.log("Received request", JSON.stringify(request));
 
-const targetClientPromise = createTargetClient();
+  const client = await createTargetClient();
+  const { response } = await client.getOffers({ request: deliveryRequest });
 
-exports.handler = (event, context, callback) => {
-  // extremely important otherwise execution hangs
-  context.callbackWaitsForEmptyEventLoop = false; 
+  logger.log("Sending response", JSON.stringify(response));
 
-  const request = getRequestBody(event);
-  
-  targetClientPromise
-  .then(client => client.getOffers({request}))
-  .then(deliveryResponse => {
-    console.log("Response", deliveryResponse);
-    
-    callback(null, buildSuccessResponse(deliveryResponse.response));
-  })
-  .catch(error => {
-    console.log("Error", error);
-    
-    callback(null, buildErrorResponse(error));
-  });
-};
+  return createResponse(STATUS, HEADERS, JSON.stringify(response));
+}
 ```
-NOTE: The `RULES` constant references the On-Device Decisioning artifact `rules.json` file. As we already mentioned, this file can be downloaded from `https://assets.adobetarget.com/{client code}/production/v1/rules.json`.
+NOTE: The `RULES` constant references the On-Device Decisioning artifact `rules.json` file. This file can be downloaded from `https://assets.adobetarget.com/<client code>/production/v1/rules.json`.
 
-There is one thing worth mentioning, in the context of AWS Lambda function, `Adobe Target NodeJS SDK` has been created and tested in a server side context and it has a few "background processes" like polling for On-Device Decisioning updates, etc, so in order to make sure that `AWS Lambda function` does not hang and timeouts, we have to use:
+It is important to highlight that `Akamai EdgeWorkers` environment is a little bit different from NodeJS or browser, hence when using `Rollup` we have to opt-in to bundle all the code for the browser environment and make sure that all the global objects like `window`, `global` or anything like that are declared and properly initialized to avoid runtime errors.
+
+The sample `Akamai EdgeWorker` leverages the `Rollup` `banner` configuration to prepend to the final JavaScript file all the necessary declarations like `window`, etc. Here is the sample `Rollup` `banner` text:
 ```JavaScript
-context.callbackWaitsForEmptyEventLoop = false; 
-```
-For more details around `context.callbackWaitsForEmptyEventLoop` please check the official Amazon documentation, that can be found [here](https://docs.aws.amazon.com/lambda/latest/dg/nodejs-context.html).
+// All these are required to ensure everything runs smoothly in an Akamai EdgeWorker
+var window = {};
+var TextDecoder = function() {};
+var setTimeout = function(callback) { callback(); };
+``` 
 
-We have the sample `AWS Lambda function handler` and we have the On-Device Decisioning artifact aka `rules.json`. To be able to use this code we need to package it in a ZIP archive. On a NIX system this can be done using:
+## Testing it out
+If everything was setup properly, then you should have an `Akamai property` configured with `Akamai EdgeWorker` behavior that can be accessed at a specific domain name. Using the domain name you could run a simple `cURL` command to check that everything is looking good. Here is a sample:
 ```bash
-$ zip -r function.zip .
+curl --location --request GET 'https://target-odd-dev.test.edgekey.net/v1/personalization' \
+--header 'Pragma: akamai-x-ew-debug' \
+--header 'Pragma: akamai-x-ew-debug-rp' \
+--header 'Akamai-EW-Trace: st=1618421957~exp=1618425557~acl=/*~hmac=6b8f31571c646d01ad5155407775f5b5b07ef237848164f745ca86c3e938dad5'
 ```
-
-# Creating the Cloudfrount distribution
-To connect all the dots, we need to create the Cloudfront distribution. Here is the `Terraform` code to do it:
-```hcl
-resource "aws_cloudfront_distribution" "cloudfront_distribution" {
-  enabled         = true
-  is_ipv6_enabled = true
-
-  origin {
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.origin_access_identity.cloudfront_access_identity_path
-    }
-    
-    domain_name = aws_s3_bucket.s3_bucket.bucket_domain_name
-    origin_id   = var.bucket_name
-  }
-  
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-  
-  default_cache_behavior {
-    target_origin_id = var.bucket_name
-    allowed_methods = ["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"]
-    cached_methods  = ["GET", "HEAD"]
-    
-    lambda_function_association {
-      event_type   = "viewer-request"
-      lambda_arn   = aws_lambda_function.main.qualified_arn
-      include_body = true
-    }
-    
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 7200
-    max_ttl                = 86400
-  }
-  
-  viewer_certificate {
-    cloudfront_default_certificate = true
-  }
-}
-```
-There is a lot of boilerplate, but the most interesting pieces are:
-- `origin` - here we connect `S3` bucket and `Origin Access Identity`
-- `default_cache_behavior` - here we have to make sure `allowed_methods` is set to `["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"]` otherwise we won't b able to process `POST` requests
-- `lambda_function_association` - here we reference `AWS Lambda function` and ensure that we respond to `viewer-request` event type, which means that `AWS Lambda` will generate the response without "origin" being involved.
-
-# Testing it out
-If everything was setup properly, then you should have a `Cloudfront distribution` domain name. Using the domain name you could run a simple `cURL` command to check that everything is looking good. Here is a sample:
-```bash
-curl --location --request POST 'dpqwfa2gsmjjr.cloudfront.net/v1/personalization' \
---header 'Content-Type: application/json' \
---data-raw '{      
-  "execute": {
-    "pageLoad": {}
-  }
-}
-'
-```
-This will simulate a "pageLoad" request aka "Target global mbox" call.
+This will execute an `Akamai EdgeWorker` that will run `Adobe Targte NodeJS SDK` `On-Device Decisioning`.
 The output would look something like this:
 ```JSON
 {
-    "status": 200,
-    "requestId": "63575665f53944a1af93337ebcd68a47",
-    "id": {
-        "tntId": "459b761e8c90453885ec68a845b3d0da.37_0"
-    },
-    "client": "targettesting",
-    "execute": {
-        "pageLoad": {
-            "options": [
-                {
-                    "type": "html",
-                    "content": "<div>Srsly, who dis?</div>"
-                },
-                {
-                    "type": "html",
-                    "content": "<div>mouse</div>"
-                }
-            ]
-        }
-    }
+  "status": 200,
+  "requestId": "2e412eb3dc594a198030097772fd1a8c",
+  "id": {
+      "tntId": "2b6b95529c8f418f877504cca96710dc.34_0"
+  },
+  "client": "targettesting",
+  "execute": {
+    "mboxes": [
+      {
+        "name": "mbox-params",
+        "options": [
+          {
+            "type": "json",
+            "content": {
+              "foo": "bar",
+              "isFooBar": true,
+              "experience": "A"
+            },
+            "responseTokens": {
+              "activity.id": 125874,
+              "activity.name": "[unit-test] mbox-params",
+              "experience.id": 0,
+              "experience.name": "Experience A",
+              "offer.id": 246852,
+              "offer.name": "/_unit-test_mbox-params/experiences/0/pages/0/zones/0/1612386851217",
+              "option.id": 2,
+              "option.name": "Offer2",
+              "activity.decisioningMethod": "on-device"
+            }
+          }
+        ],
+        "index": 0
+      }
+    ]
+  }
 }
 ```
+Normally we would stop here, but we all know that nothing works the way we want the first time. So it is crucial to have proper troubleshooting tools at our disposal. Thankfully `Akamai EdgeWorker` allows you to get the logs that we write in the JavaScript code via HTTP headers. In order to enable this capability we have to add a few debug HTTP headers to the outgoing request, these are:
+- `Pragma: akamai-x-ew-debug`
+- `Pragma: akamai-x-ew-debug-rp` - used for `responseProvider`
+- `Aakamai-EW-Trace: st=......` - contains the HMAC used for handshaking to ensure request is authorized to get the logs.
 
-# Conclusion
-By looking at the sheer amount of `Terraform` code one might ask:
-- Why even bother?
-- Why should I spend so much time and energy trying to deploy `Adobe Target NodeJS SDK` on `AWS Lambda@Edge`?
+`Akamai CLI` for `EdgeWorkers` has a convenient command named `auth` that allows us to generate the value required for `Akamai-EW-Trace`. The `auth` command needs the `Akamai EdgeWorker debug secret` that we have setup earlier. To create the HMAC for `Akamai-EW-Trace` we can use this command:
+```bash
+$ akamai ew auth <debug secret>
+```
+The output would look something like this:
+```bash
+Akamai-EW-Trace: st=1619377928~exp=1619378828~acl=/*~hmac=<generated HMAC>
+```
 
-Here are a few benefits:
-- `Isolation` - from security point of view, sometimes it is quite complicated to add yet another third party dependency like `Adobe Target NodeJS SDK` to your codebase. While deploying a similar code to `AWS Lambda` is pretty easy and everything is well isolated.
-- `Decoupling` - if your codebase depends on `Adobe Target NodeJS SDK` and there is a bug or security issue, sometimes it might be difficult to have a release, while with `AWS Lambda` being a serverless platform, this is trivial and less dangerous.
-- `Flexibility` - in the provided sample, we are returning a [Target Delivery API](http://developers.adobetarget.com/api/delivery-api/#tag/Delivery-API) response, but nothing stops you from adding custom logic and transformation to have a custom JSON output. Also you could build custom REST APIs on top of `AWS Lambda@Edg` that is tailored to your domain.
-- `Performance` - not everyone is Amazon or Google or Adobe and even if you have presence in multiple geographic locations you can't beat `Cloudfront` with its 200+ points of presence. By using `AWS Lambda@Edge` and `Adobe Target NodeJS SDK` you get low latency and a lot of flexibility.
+When enabling debug headers, our sample response will look like this:
+```
+
+--yguZ36SBeirJVeeQGLblT7
+content-type: application/json
+content-disposition: form-data; name="response-provider-body"
+
+{"status":200,"requestId":"20605b03b80d47c9be5351b650d2630b","id":{"tntId":"80d1734703214647967607a938f8e1fe.34_0"},"client":"targettesting","execute":{"mboxes":[{"name":"mbox-params","options":[{"type":"json","content":{"foo":"bar","isFooBar":true,"experience":"B"},"responseTokens":{"activity.id":125874,"activity.name":"[unit-test] mbox-params","experience.id":1,"experience.name":"Experience B","offer.id":246851,"offer.name":"/_unit-test_mbox-params/experiences/1/pages/0/zones/0/1612386851213","option.id":3,"option.name":"Offer3","activity.decisioningMethod":"on-device"}}],"index":0}]}}
+--yguZ36SBeirJVeeQGLblT7
+content-type: text/plain;charset=UTF-8
+content-disposition: form-data; name="stream-trace"
+
+X-Akamai-EdgeWorker-ResponseProvider-Info: ew=5536 v0.24:target-odd-edgeworker; status=Success; status_msg=-; wall_time=35.778; cpu_time=28.696
+X-Akamai-EdgeWorker-ResponseProvider-Log: D:main.js:1635 Received request {"sandboxId":null,"cpCode":1171899,"url":"/v1/personalization","query":"","scheme":"https","path":"/v1/personalization","method":"GET","host":"target-odd-dev.test.edgekey.net","userLocation":{"continent":"EU","country":"MD","region":"","zipCode":"","city":"CHISINAU"},"device":{"isMobile":false,"isWireless":false,"isTablet":false}}|D::1642 Sending response {"status":200,"requestId":"20605b03b80d47c9be5351b650d2630b","id":{"tntId":"80d1734703214647967607a938f8e1fe.34_0"},"client":"targettesting","execute":{"mboxes":[{"name":"mbox-params","options":[{"type":"json","content":{"foo":"bar","isFooBar":true,"experience":"B"},"responseTokens":{"activity.id":125874,"activity.name":"[unit-test] mbox-params","experience.id":1,"experience.name":"Experience B","offer.id":246851,"offer.name":"/_unit-test_mbox-params/experiences/1/pages/0/zones/0/1612386851213","option.id":3,"option.name":"Offer3","activity.decisioningMethod":"on-device"}}],"index":0}]}}
+
+--yguZ36SBeirJVeeQGLblT7--
+```
+NOTE: In this response we see JSON response, along with all the logs we have added to our `Akamai EdgeWorker` script. This approach can be invaluable when trying to debug `Akamai EdgeWorkers`.
+
+## Closing thoughts
+In this article we have proved that `Adobe Target NodeJS SDK` can be used successfully from an `Akamai EdgeWorker`. We have seen how `Terraform` and `Akamai CLI` can be used to create the necessary `Akamai` resources to be able to invoke the `Akamai EdgeWorker` using a simple HTTP GET.
+
+While I am very pleased with the result, there are a few roadblocks and things I wish we could improve in the future:
+- `Terraform` `Akamai` provider recently released `v1`. Most of my previous knowledge about `Akamai` provider wasn't really applicable and I had redo most of the property configuration from scratch. Thankfully the provider documentation is really good, but it still required some trial and error.
+- `Terraform` `Akamai` provider doesn't know about `EdgeWorkers`. My guess is because this is a recent product and the provider hasn't been updated. It's not that bad, since we can use `Akamai CLI`, but ideally we should keep everything under one single tool.
+- `Akamai EdgeWorkers` debugging/troubleshooting could be better. At this point in time, the only way to debug anything in `Akamai EdgeWorkers` is to use log statements. It works, but it is slow, since every code change requires uploading the bundle and activating it. We can and should use staging network for development, but still we are talking about minutes here. An alternative would be to use an `Akamai sandbox`, but there are some limitations related to `sandbox` and `EdgeWorkers` like inability to fire HTTP requests from within the `EdgeWorker`.
+
+The biggest issue I have faced while working with `Akamai EdgeWorker` is the caching of `Akamai EdgeWorker` response. I haven't found anything in the documentation related to this behavior. During development I have created more than 20+ versions of an `Akamai EdgeWorker` and I was testing everything using the `staging` network. After awhile I would get a cached JSON response and it didn't matter if I activated a new version or not. After some head scratching, I decided to purge the cache for `Akamai EdgeWorker` and after that everything got back to normal and I was able to see my code changes again. I was lucky enough that I had access to purge cache functionality, in other setups developers might be restricted from purging the cache.
+
+After all this, should anyone try to use `Akamai EdgeWorker`, my answer would be YES, as long as you can workaround the limitations imposed by `Akamai EdgeWorker`. The ability to run logic as closely as possible to your users can not be underestimated. `Akamai` has the biggest network of points of presence, so using `Akamai` you can deliver outstanding performance. While `Akamai EdgeWorkers` event handlers might be confusing at first, they provide a lot of flexibility and you more control around how a particular request should be processed. 
 
 # Resources
-A full working example of `Adobe Target NodeJS SDK` and `AWS Lambda@Edge` can be found [here](https://github.com/artur-ciocanu/odd-lambda-edge).
+- Source code - https://github.com/artur-ciocanu/odd-akamai-edge-workers
+- Adobe Target - https://business.adobe.com/products/target/adobe-target.html
+- Adobe Experience Platform - https://business.adobe.com/products/experience-platform/adobe-experience-platform.html
+- Adobe Target NodeJS SDK - https://adobetarget-sdks.gitbook.io/docs/sdk-reference-guides/nodejs-sdk
+- Terraform - https://www.terraform.io/
+- Akamai Terraform provider - https://registry.terraform.io/providers/akamai/akamai/latest/docs
+- Akamai EdgeWorkers - https://developer.akamai.com/akamai-edgeworkers-overview#resources
+- Akamai CLI - https://developer.akamai.com/getting-started/cli
+- Akamai CLI EdgeWorkers package - https://developer.akamai.com/cli/packages/edgeworkers.html
