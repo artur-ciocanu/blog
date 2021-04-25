@@ -11,8 +11,8 @@ I this three part series we will cover how anyone could use Adobe Target NodeJS 
 
 Series list:
 - **part 1 - covers Akamai Edge Workers and Adobe Target NodeJS SDK**
-- part 2 - covers AWS Lambd@Edge and Adobe Target NodeJS SDKNodeJS SDK
-- part 3 - covers Cloudflare Workers and Adobe Target 
+- part 2 - covers AWS Lambd@Edge and Adobe Target NodeJS SDK
+- part 3 - covers Cloudflare Workers and Adobe Target NodeJS SDK
 
 # Step by step guide
 At `Adobe Target` we are strong proponents of automation and `Infrastructure as Code`, that's why we love `Hashicorp Terraform`. For us `Terraform` provides the right amount of declarative vs imperative code and it has enough escape hatches in case something is missing.
@@ -248,7 +248,7 @@ export async function responseProvider(request) {
   return createResponse(STATUS, HEADERS, JSON.stringify(response));
 }
 ```
-NOTE: The `RULES` constant references the On-Device Decisioning artifact `rules.json` file. This file can be downloaded from `https://assets.adobetarget.com/<client code>/production/v1/rules.json`.
+NOTE: The `RULES` constant references the `On-Device Decisioning` artifact `rules.json` file. This file can be downloaded from `https://assets.adobetarget.com/<client code>/production/v1/rules.json`. This file will be available only after you have enabled `On-Device Decisioning` for your `Adobe Target` account.
 
 It is important to highlight that `Akamai EdgeWorkers` environment is a little bit different from NodeJS or browser, hence when using `Rollup` we have to opt-in to bundle all the code for the browser environment and make sure that all the global objects like `window`, `global` or anything like that are declared and properly initialized to avoid runtime errors.
 
