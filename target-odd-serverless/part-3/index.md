@@ -169,7 +169,7 @@ Overall I am very pleased with the result and the demo that I have managed to bu
 The possibilities are limitless and constrained only by our own imagination.
 
 # Resources
-- Source code - https://github.com/artur-ciocanu/odd-lambda-edge
+- Source code - https://github.com/artur-ciocanu/odd-cloudflare-workers
 - Adobe Target - https://business.adobe.com/products/target/adobe-target.html
 - Adobe Experience Platform - https://business.adobe.com/products/experience-platform/adobe-experience-platform.html
 - Adobe Target NodeJS SDK - https://adobetarget-sdks.gitbook.io/docs/sdk-reference-guides/nodejs-sdk
